@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Map Editor</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
+    <style>
+        #map {
+            height: 1000px;
+            width: 100%;
+        }
+        .toolbar {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 1000;
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+        }
+        .toolbar button {
+            margin: 5px;
+            font-size: 20px;
+            padding: 10px;
+            cursor: pointer;
+        }
+        .toolbar button.water-supply {
+            color: blue;
+        }
+        .toolbar button.water-drainage {
+            color: orange;
+        }
+        .toolbar button.house {
+            color: gray;
+        }
+        .toolbar button.save {
+            color: green;
+        }
+        .toolbar button.load {
+            color: blue;
+        }
+        .toolbar button.well {
+            color: green;
+        }
+        .toolbar button.burst {
+            color: red;
+        }
+        .leaflet-popup-content {
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+    <div class="toolbar">
+        <button id="water-supply-btn" class="water-supply">Водопостачання</button>
+        <button id="water-drainage-btn" class="water-drainage">Водовідведення</button>
+        <button id="house-btn" class="house">Будинки</button>
+        <button id="well-btn" class="well">Колодець</button>
+        <button id="burst-btn" class="burst">Порив</button>
+        <button id="save-btn" class="save">Зберегти</button>
+        <button id="load-btn" class="load">Оновити</button>
+    </div>
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+
+    <script>
+        var map = L.map('map').setView([48.889319, 36.310684], 13); // Centered on Lozova
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19
+        }).addTo(map);
+
+        var drawnItems = new L.FeatureGroup();
+        map.addLayer(drawnItems);
+
+        var drawControl = new L.Control.Draw({
+            edit: {
+                featureGroup: drawnItems
+            }
+        });
+        map.addControl(drawControl);
+
+        var currentType = 'water-supply'; // Default type
+
+        document.getElementById('water-supply-btn').addEventListener('click', function() {
+            currentType = 'water-supply';
+        });
+
+        document.getElementById('water-drainage-btn').addEventListener('click', function() {
+            currentType = 'water-drainage';
+        });
+
+        document.getElementById('house-btn').addEventListener('click', function() {
+            currentType = 'house';
+        });
+
+        document.getElementById('well-btn').addEventListener('click', function() {
+            currentType = 'well';
+        });
+
+        document.getElementById('burst-btn').addEventListener('click', function() {
+            currentType = 'burst';
+        });
+
+        map.on(L.Draw.Event.CREATED, function (event) {
+            var layer = event.layer;
+
+            if (currentType === 'water-supply' || currentType === 'water-drainage') {
+                layer.setStyle({color: currentType === 'water-supply' ? 'blue' : 'orange'});
+
+                layer.bindPopup(function() {
+                    var diameter = layer.diameter || '';
+                    var material = layer.material || '';
+                    return `
+                     <div>
+                        <label for="diameter">Діаметр:</label>
+                        <input type="text" id="diameter" placeholder="Enter diameter" value="${diameter}" />
+                        <br />
+                        <label for="material">Матеріал:</label>
+                        <input type="text" id="material" placeholder="Enter material" value="${material}" />
+                        <br />
+                        <button id="save-details">Зберегти</button>
+                    </div>
+                 `;
+            }).openPopup();
+
+            layer.on('popupopen', function() {
+                document.getElementById('save-details').addEventListener('click', function () {
+                    layer.diameter = document.getElementById('diameter').value;
+                    layer.material = document.getElementById('material').value;
+                    layer.closePopup();
+                });
+            });
+        }
+
+
+            if (currentType === 'well') {
+                layer = L.circle(event.layer.getLatLng(), {radius: 10, color: 'blue'});
+                layer.bindPopup(`
+                    <div>
+                        <label for="photo">Завантажити фото:</label>
+                        <input type="file" id="photo" accept="image/*" />
+                        <br />
+                        <img id="well-photo" style="max-width: 400px; max-height: 800px;" />
+                    </div>
+                `).openPopup();
+
+                layer.on('popupopen', function() {
+                    document.getElementById('photo').addEventListener('change', function(event) {
+                        var file = event.target.files[0];
+                        if (file) {
+                            var reader = new FileReader();
+                            reader.onload = function(e) {
+                                document.getElementById('well-photo').src = e.target.result;
+                                layer.photo = e.target.result;
+                            };
+                            reader.readAsDataURL(file);
+                        }
+                    });
+                });
+            }
+
+            drawnItems.addLayer(layer);
+        });
+        document.getElementById('save-btn').addEventListener('click', function() {
+            var elements = [];
+            drawnItems.eachLayer(function(layer) {
+            var elementData = {};
+                if (layer instanceof L.Polyline) {
+                elementData = {
+                    type: layer.options.color === 'blue' ? 'water-supply' : 'water-drainage',
+                    latlngs: layer.getLatLngs().map(function(latlng) {
+                    return [latlng.lat, latlng.lng];
+                    }),
+                    color: layer.options.color,
+                    diameter: layer.diameter || '',  // Извлекаем сохраненные значения диаметра
+                    material: layer.material || ''   // Извлекаем сохраненные значения материала
+                };
+        } else if (layer instanceof L.Circle) {
+            elementData = {
+                type: 'well',
+                latlng: [layer.getLatLng().lat, layer.getLatLng().lng],
+                radius: layer.getRadius(),
+                photo: layer.photo || ''
+            };
+        } else if (layer instanceof L.Marker) {
+            elementData = {
+                type: 'burst',
+                latlng: [layer.getLatLng().lat, layer.getLatLng().lng]
+            };
+        } else if (layer instanceof L.Rectangle) {
+            elementData = {
+                type: 'house',
+                bounds: layer.getBounds()
+            };
+        }
+        elements.push(elementData);
+    });
+
+    fetch('/save', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(elements)
+    }).then(response => response.json()).then(data => {
+        alert(data.message);
+    }).catch(error => {
+        console.error('Error:', error);
+    });
+});
+
+    document.getElementById('load-btn').addEventListener('click', function() {
+        fetch('/load').then(response => response.json()).then(data => {
+            drawnItems.clearLayers();
+            data.forEach(function(element) {
+                var layer;
+                    if (element.type === 'water-supply' || element.type === 'water-drainage') {
+                    layer = L.polyline(element.latlngs, {color: element.color});
+                    layer.diameter = element.diameter;  // Восстанавливаем диаметр из сохраненного значения
+                    layer.material = element.material;  // Восстанавливаем материал из сохраненного значения
+                    if (element.diameter || element.material) {
+                        layer.bindPopup(`
+                        <div>
+                            <strong>Diameter:</strong> ${element.diameter || 'N/A'}<br>
+                            <strong>Material:</strong> ${element.material || 'N/A'}
+                        </div>
+                    `);
+                        }
+                    } else if (element.type === 'well') {
+                        layer = L.circle(element.latlng, {radius: element.radius, color: 'blue'});
+                        if (element.photo) {
+                            layer.bindPopup(`
+                                <div>
+                                    <img src="${element.photo}" style="max-width: 300px; max-height: 300px;" />
+                                </div>
+                            `);
+                        }
+                    } else if (element.type === 'burst') {
+                        layer = L.marker(element.latlng, {icon: L.divIcon({className: 'fas fa-exclamation-circle', html: '<i class="fas fa-exclamation-circle" style="color:red;"></i>'})});
+                    } else if (element.type === 'house') {
+                        layer = L.rectangle(element.bounds, {color: 'gray'});
+                    }
+                    drawnItems.addLayer(layer);
+                });
+            }).catch(error => {
+                console.error('Error:', error);
+            });
+        });
+
+        // Load existing elements when the page is loaded
+        document.getElementById('load-btn').click();   
+
+        document.getElementById('save-btn').addEventListener('click', function() {
+    var elements = [];
+    drawnItems.eachLayer(function(layer) {
+        var elementData = {};
+        if (layer instanceof L.Polyline) {
+            var latlngs = layer.getLatLngs();
+            elementData = {
+                type: layer.options.color === 'blue' ? 'water-supply' : 'water-drainage',
+                latlngs: latlngs.map(function(latlng) {
+                    return [latlng.lat, latlng.lng];
+                }),
+                color: layer.options.color,
+                diameter: layer.getPopup() && layer.getPopup()._content.includes('Diameter:') ? document.querySelector('#diameter')?.value : '',
+                material: layer.getPopup() && layer.getPopup()._content.includes('Material:') ? document.querySelector('#material')?.value : ''
+            };
+        } else if (layer instanceof L.Circle) {
+            let photoSrc = document.querySelector('#well-photo') ? document.querySelector('#well-photo').src : '';
+            elementData = {
+                type: 'well',
+                latlng: [layer.getLatLng().lat, layer.getLatLng().lng],
+                radius: layer.getRadius(),
+                photo: photoSrc
+            };
+        } else if (layer instanceof L.Marker) {
+            elementData = {
+                type: 'burst',
+                latlng: [layer.getLatLng().lat, layer.getLatLng().lng]
+            };
+        } else if (layer instanceof L.Rectangle) {
+            elementData = {
+                type: 'house',
+                bounds: layer.getBounds()
+            };
+        }
+        elements.push(elementData);
+    });
+
+    fetch('/save_data', { // Обновите URL здесь
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(elements)
+    }).then(response => response.json()).then(data => {
+        alert(data.message);
+    }).catch(error => {
+        console.error('Error:', error);
+    });
+});
+    </script>
+</body>
+</html>
